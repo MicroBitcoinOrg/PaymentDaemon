@@ -1,4 +1,4 @@
-# Copyright (c) 2018 iamstenman
+# Copyright (c) 2019 iamstenman
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -23,19 +23,21 @@ allowed = [
 
 class Address():
 	def hash160(self, raw_hex):
-		sha = hashlib.sha256()
+		sha = hashlib.sha256(raw_hex)
 		rip = hashlib.new('ripemd160')
-		sha.update(raw_hex)
 		rip.update(sha.digest())
 		return rip.hexdigest()
 
-	def sha256n(self, raw_data, iterations=2):
-		data = hashlib.sha256(raw_data.encode()).hexdigest()
-		while iterations > 1:
-			data = hashlib.sha256(binascii.unhexlify(data)).hexdigest()
+	def sha256d(self, raw_hex):
+		return hashlib.sha256(hashlib.sha256(raw_hex).digest()).hexdigest()
+
+	def seed_key(self, raw_data, iterations=2):
+		data = hashlib.sha256(raw_data.encode())
+		while iterations > 0:
+			data = hashlib.blake2b(hashlib.blake2b(data.digest()).digest())
 			iterations -= 1
 
-		return hashlib.sha256(binascii.unhexlify(data)).hexdigest()
+		return data.hexdigest()[:64]
 
 	def uncompressed_to_compressed(self, raw_pubkey):
 		order = ecdsa.SECP256k1.generator.order()
@@ -51,12 +53,12 @@ class Address():
 		return K
 
 	def new(self, data, iterations=1):
-		privkey = self.sha256n(data, iterations)
+		privkey = self.seed_key(data, iterations)
 		pubkey = self.uncompressed_to_compressed(self.secret_to_pubkey(privkey))
 		key = '80' + privkey + '01'
-		key_hash = self.sha256n(key)
+		key_hash = self.sha256d(bytes(binascii.unhexlify(key)))
 		addr_hash = '1A' + self.hash160(pubkey)
-		checksum = self.sha256n(addr_hash)
+		checksum = self.sha256d(bytes(binascii.unhexlify(addr_hash)))
 		return {
 			"wif": base58.b58encode(bytes(bytearray.fromhex(key + key_hash[:8]))).decode('utf-8'),
 			"address": base58.b58encode(bytes(bytearray.fromhex(addr_hash + checksum[:8]))).decode('utf-8')
@@ -172,8 +174,9 @@ class RpcServer(BaseHTTPRequestHandler):
 	def handle_request(self, data):
 		response = Rpc().dead()
 		if "error" not in data:
-			if data["method"] == "blockchain.address.bake" and len(data["params"]) == 2 and data["params"][1].isnumeric():
-				response = Rpc().create(Address().new(data["params"][0], int(data["params"][1])), data["id"])
+			if data["method"] == "blockchain.address.bake":
+				if len(data["params"]) == 2 and data["params"][1].isnumeric():
+					response = Rpc().create(Address().new(data["params"][0], int(data["params"][1])), data["id"])
 
 		return response
 
