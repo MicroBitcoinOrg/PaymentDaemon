@@ -34,7 +34,7 @@ class Address():
 	def seed_key(self, raw_data, iterations=2):
 		data = hashlib.sha256(raw_data.encode())
 		while iterations > 0:
-			data = hashlib.blake2b(hashlib.blake2b(data.digest()).digest())
+			data = hashlib.sha256(data.digest())
 			iterations -= 1
 
 		return data.hexdigest()[:64]
