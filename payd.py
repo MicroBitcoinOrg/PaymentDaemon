@@ -7,162 +7,34 @@
 Usage::
 	./payd.py [<port>]
 """
+from core.wallet import Key
+from core.format import to_satoshis, key_to_pub, bytes_to_wif, public_key_to_address
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib import parse
+from rpc import Rpc
 import hashlib
-import binascii
-import base58
-import ecdsa
 import json
-import re
 
-node_name = 'PaymenDaemon'
-allowed = [
-	"blockchain.address.bake"
-]
+class Seed():
+	def __init__(self, data, iterations):
+		self.data = data
+		self.iterations = iterations
 
-class Address():
-	def hash160(self, raw_hex):
-		sha = hashlib.sha256(raw_hex)
-		rip = hashlib.new('ripemd160')
-		rip.update(sha.digest())
-		return rip.hexdigest()
-
-	def sha256d(self, raw_hex):
-		return hashlib.sha256(hashlib.sha256(raw_hex).digest()).hexdigest()
-
-	def seed_key(self, raw_data, iterations=2):
+	def seed_key(self, raw_data, iterations):
 		data = hashlib.sha256(raw_data.encode())
 		while iterations > 0:
 			data = hashlib.sha256(data.digest())
 			iterations -= 1
 
-		return data.hexdigest()[:64]
+		return data.digest()
 
-	def uncompressed_to_compressed(self, raw_pubkey):
-		order = ecdsa.SECP256k1.generator.order()
-		p = ecdsa.VerifyingKey.from_string(raw_pubkey, curve=ecdsa.SECP256k1).pubkey.point
-		x_str = ecdsa.util.number_to_string(p.x(), order)
-		compressed = bytes(chr(2 + (p.y() & 1)), 'ascii') + x_str
-		return compressed
-
-	def secret_to_pubkey(self, secret):
-		private_key = ecdsa.SigningKey.from_string(binascii.unhexlify(secret), curve=ecdsa.SECP256k1)
-		public_key = private_key.get_verifying_key()
-		K = public_key.to_string()
-		return K
-
-	def new(self, data, iterations=1):
-		privkey = self.seed_key(data, iterations)
-		pubkey = self.uncompressed_to_compressed(self.secret_to_pubkey(privkey))
-		key = '80' + privkey + '01'
-		key_hash = self.sha256d(bytes(binascii.unhexlify(key)))
-		addr_hash = '1A' + self.hash160(pubkey)
-		checksum = self.sha256d(bytes(binascii.unhexlify(addr_hash)))
+	def new(self):
+		privkey = self.seed_key(self.data, self.iterations)
+		pubkey = key_to_pub(privkey)
 		return {
-			"wif": base58.b58encode(bytes(bytearray.fromhex(key + key_hash[:8]))).decode('utf-8'),
-			"address": base58.b58encode(bytes(bytearray.fromhex(addr_hash + checksum[:8]))).decode('utf-8')
+			"wif": bytes_to_wif(privkey),
+			"address": public_key_to_address(pubkey)
 		}
-
-class Rpc():
-	def dead(self, code=-32600, message="Invalid Request", rid=node_name):
-		return {"jsonrpc": "2.0", "error": {"code": code, "message": message}, "id": rid}
-
-	def handle(self, raw_data):
-		result = {
-			"jsonrpc": "2.0",
-			"params": [],
-			"id": node_name
-		}
-
-		error = False
-		blank = False
-		error_message = ""
-		error_code = 0
-		isjson = False
-		method = ""
-		rid = ""
-
-		try:
-			try:
-				data = json.loads(raw_data)
-				isjson = True
-			except Exception as e:
-				data = parse.parse_qs(raw_data)
-				print(e)
-
-			if isjson and data["jsonrpc"] != "2.0":
-				error = True
-				error_message = "Invalid Request"
-				error_code = -32600
-
-			if "method" not in data:
-				blank = True
-			else:
-				method = data["method"] if isjson else data["method"][0]
-				if method not in allowed:
-					error = True
-					error_message = "Invalid Request"
-					error_code = -32601
-
-			if "params[]" in data:
-				data["params"] = data["params[]"]
-				data.pop("params[]", None)
-
-			if "id" in data:
-				rid = data["id"] if isjson else data["id"][0]
-				if type(rid) is str or type(rid) is int:
-					result["id"] = rid
-
-			if error is True:
-				result["error"] = {
-					"code": error_code,
-					"message": error_message
-				}
-			else:
-				if blank:
-					result["method"] = "server.status"
-				else:
-					result["method"] = method
-					if "params" in data:
-						result["params"] = data["params"]
-
-		except ValueError:
-			result = self.dead(-32700, "Parse error")
-
-		return result
-
-	def create(self, result_data, rpc_id):
-		result = {
-			"jsonrpc": "2.0",
-			"id": rpc_id
-		}
-
-		error = False
-		error_message = ""
-		error_code = 0
-
-		try:
-			if type(result_data) == list or type(result_data) == dict or len(re.findall(r'^[a-fA-F0-9]+$', result_data)) > 0:
-				data = result_data
-
-			else:
-				error = True
-				error_message = "Invalid Request: {}".format(result_data)
-				error_code = -32600
-
-			if error is True:
-				result["error"] = {
-					"code": error_code,
-					"message": error_message
-				}
-			else:
-				result["result"] = data
-		except Exception as e:
-			result = self.dead(-32700, "Parse error")
-			print(e)
-
-		return result
 
 class RpcServer(BaseHTTPRequestHandler):
 	def _set_response(self):
@@ -176,7 +48,26 @@ class RpcServer(BaseHTTPRequestHandler):
 		if "error" not in data:
 			if data["method"] == "blockchain.address.bake":
 				if len(data["params"]) == 2 and data["params"][1].isnumeric():
-					response = Rpc().create(Address().new(data["params"][0], int(data["params"][1])), data["id"])
+					response = Rpc().create(Seed(data["params"][0], int(data["params"][1])).new(), data["id"])
+
+			elif data["method"] == "blockchain.transaction.create":
+				if len(data["params"]) >= 3 and len(data["params"][0]) in (51, 52) and len(data["params"][1]) == 34 and data["params"][2].isnumeric():
+					outputs = [(data["params"][1], float(data["params"][2]))]
+					tx_fee = to_satoshis(float(data["params"][3])) if len(data["params"]) == 4 and data["params"][3].isnumeric() else 1000
+					result = {}
+
+					try:
+						key = Key(data["params"][0])
+					except Exception as e:
+						result["error"] = str(e)
+
+					if "error" not in result:
+						try:
+							result = key.new_tx(outputs, fee=tx_fee, absolute_fee=True)
+						except Exception as e:
+							result["error"] = str(e)
+
+					response = Rpc().create(result, data["id"])
 
 		return response
 

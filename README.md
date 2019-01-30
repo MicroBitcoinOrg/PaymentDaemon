@@ -9,7 +9,7 @@ This is simple server which you can use to generate MicroBitcoin addresses, send
 
 ## ToDo:
 - [x] Address generation
-- [ ] Transaction sending
+- [x] Transaction sending
 
 
 Developed with love by **iamstenman**
