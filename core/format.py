@@ -14,6 +14,22 @@ from core.constants import (
 	PUBLIC_KEY_COMPRESSED_ODD_Y, PRIVATE_KEY_COMPRESSED_PUBKEY
 )
 
+def is_float(s):
+	try:
+		float(s)
+		return True
+	except ValueError:
+		pass
+
+	try:
+		import unicodedata
+		unicodedata.numeric(s)
+		return True
+	except (TypeError, ValueError):
+		pass
+
+	return False
+
 def key_to_pub(private_key_bytes):
 	private_key = ECPrivateKey(private_key_bytes)
 	return private_key.public_key.format(compressed=True)

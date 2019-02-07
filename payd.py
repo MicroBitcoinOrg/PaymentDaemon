@@ -8,7 +8,7 @@ Usage::
 	./payd.py [<port>]
 """
 from core.wallet import Key
-from core.format import to_satoshis, key_to_pub, bytes_to_wif, public_key_to_address
+from core.format import to_satoshis, key_to_pub, bytes_to_wif, public_key_to_address, is_float
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib import parse
 from rpc import Rpc
@@ -51,9 +51,9 @@ class RpcServer(BaseHTTPRequestHandler):
 					response = Rpc().create(Seed(data["params"][0], int(data["params"][1])).new(), data["id"])
 
 			elif data["method"] == "blockchain.transaction.create":
-				if len(data["params"]) >= 3 and len(data["params"][0]) in (51, 52) and len(data["params"][1]) == 34 and data["params"][2].isnumeric():
+				if len(data["params"]) >= 3 and len(data["params"][0]) in (51, 52) and len(data["params"][1]) == 34 and is_float(data["params"][2]):
 					outputs = [(data["params"][1], float(data["params"][2]))]
-					tx_fee = to_satoshis(float(data["params"][3])) if len(data["params"]) == 4 and data["params"][3].isnumeric() else 1000
+					tx_fee = to_satoshis(float(data["params"][3])) if len(data["params"]) == 4 and is_float(data["params"][3]) else 1000
 					result = {}
 
 					try:
