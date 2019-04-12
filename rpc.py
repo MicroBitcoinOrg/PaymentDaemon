@@ -5,7 +5,8 @@ from urllib import parse
 node_name = 'PaymenDaemon'
 allowed = [
 	"blockchain.address.bake",
-	"blockchain.transaction.create"
+	"blockchain.transaction.create",
+	"blockchain.transaction.batch"
 ]
 
 class Rpc():

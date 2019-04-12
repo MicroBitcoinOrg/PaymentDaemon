@@ -51,10 +51,10 @@ class RpcServer(BaseHTTPRequestHandler):
 					response = Rpc().create(Seed(data["params"][0], int(data["params"][1])).new(), data["id"])
 
 			elif data["method"] == "blockchain.transaction.create":
+				result = {}
 				if len(data["params"]) >= 3 and len(data["params"][0]) in (51, 52) and len(data["params"][1]) == 34 and is_float(data["params"][2]):
 					outputs = [(data["params"][1], float(data["params"][2]))]
 					tx_fee = to_satoshis(float(data["params"][3])) if len(data["params"]) == 4 and is_float(data["params"][3]) else 1000
-					result = {}
 
 					try:
 						key = Key(data["params"][0])
@@ -66,6 +66,39 @@ class RpcServer(BaseHTTPRequestHandler):
 							result = key.new_tx(outputs, fee=tx_fee, absolute_fee=True)
 						except Exception as e:
 							result["error"] = str(e)
+
+					response = Rpc().create(result, data["id"])
+
+			elif data["method"] == "blockchain.transaction.batch":
+				result = {}
+				if len(data["params"]) >= 3 and len(data["params"][0]) in (51, 52):
+					addresses = data["params"][1].split(',')
+					amounts = data["params"][2].split(',')
+
+					if len(addresses) == len(amounts):
+						outputs = []
+						for index, address in enumerate(addresses):
+							if len(address) == 34 and is_float(amounts[index]):
+								outputs.append((address, float(amounts[index])))
+							else:
+								result["error"] = "Invalid address or amount"
+
+						if "error" not in result:
+							tx_fee = to_satoshis(float(data["params"][3])) if len(data["params"]) == 4 and is_float(data["params"][3]) else 10000
+
+							try:
+								key = Key(data["params"][0])
+							except Exception as e:
+								result["error"] = str(e)
+
+							if "error" not in result:
+								try:
+									result = key.new_tx(outputs, fee=tx_fee, absolute_fee=True)
+								except Exception as e:
+									result["error"] = str(e)
+
+					else:
+						result["error"] = "Addresses and amounts must match"
 
 					response = Rpc().create(result, data["id"])
 
