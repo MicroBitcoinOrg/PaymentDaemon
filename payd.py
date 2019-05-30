@@ -36,6 +36,15 @@ class Seed():
 			"address": public_key_to_address(pubkey)
 		}
 
+	def hash(self):
+		seed = hashlib.sha256(self.data.encode()).digest() + hashlib.sha256(str(self.iterations).encode()).digest()
+		privkey = hashlib.sha256(seed).digest()
+		pubkey = key_to_pub(privkey)
+		return {
+			"wif": bytes_to_wif(privkey),
+			"address": public_key_to_address(pubkey)
+		}
+
 class RpcServer(BaseHTTPRequestHandler):
 	def _set_response(self):
 		self.send_response(200)
@@ -49,6 +58,10 @@ class RpcServer(BaseHTTPRequestHandler):
 			if data["method"] == "blockchain.address.bake":
 				if len(data["params"]) == 2 and data["params"][1].isnumeric():
 					response = Rpc().create(Seed(data["params"][0], int(data["params"][1])).new(), data["id"])
+
+			if data["method"] == "blockchain.address.hash":
+				if len(data["params"]) == 2 and data["params"][1].isnumeric():
+					response = Rpc().create(Seed(data["params"][0], int(data["params"][1])).hash(), data["id"])
 
 			elif data["method"] == "blockchain.transaction.create":
 				result = {}

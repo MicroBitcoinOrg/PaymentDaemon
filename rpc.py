@@ -5,6 +5,7 @@ from urllib import parse
 node_name = 'PaymenDaemon'
 allowed = [
 	"blockchain.address.bake",
+	"blockchain.address.hash",
 	"blockchain.transaction.create",
 	"blockchain.transaction.batch"
 ]
